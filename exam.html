@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>시험 보기</title>
+  <style>
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: linear-gradient(to bottom, #e3f2fd, #ffffff);
+    padding: 30px;
+  }
+
+  .box {
+    background: #ffffff;
+    padding: 30px;
+    border-radius: 16px;
+    max-width: 800px;
+    margin: auto;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  }
+
+  h2 {
+    text-align: center;
+    color: #1976d2;
+    margin-bottom: 20px;
+  }
+
+  label {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333;
+  }
+
+  select {
+    padding: 8px 12px;
+    font-size: 16px;
+    margin-bottom: 20px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+  }
+
+  .question {
+    margin-bottom: 30px;
+  }
+
+  .question p {
+    font-size: 18px;
+    margin-bottom: 12px;
+    color: #222;
+  }
+
+  .options {
+    display: flex;
+    gap: 10px;
+  }
+
+  .options button {
+    background: #90caf9;
+    color: #0d47a1;
+    border: none;
+    padding: 12px 18px;
+    border-radius: 10px;
+    font-size: 18px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+
+  .options button:hover {
+    background: #64b5f6;
+  }
+
+  .options button.selected {
+    background: #43a047 !important;
+    color: white !important;
+    transform: scale(1.05);
+    box-shadow: 0 0 10px rgba(67, 160, 71, 0.6);
+  }
+
+  textarea {
+    width: 100%;
+    height: 120px;
+    font-size: 17px;
+    padding: 12px;
+    border: 1px solid #bbb;
+    border-radius: 10px;
+    resize: vertical;
+    box-sizing: border-box;
+  }
+
+  button {
+    padding: 12px 24px;
+    font-size: 17px;
+    background: #1976d2;
+    color: white;
+    border: none;
+    cursor: pointer;
+    border-radius: 10px;
+    transition: background 0.3s ease;
+    display: block;
+    margin: 20px auto 0;
+  }
+
+  button:hover {
+    background: #1565c0;
+  }
+
+  #logoutBtn {
+    background: #d32f2f;
+    width: 100%;
+    margin-top: 30px;
+  }
+
+  #logoutBtn:hover {
+    background: #b71c1c;
+  }
+
+  #result {
+    margin-top: 30px;
+    font-weight: bold;
+    font-size: 18px;
+    color: #2e7d32;
+    text-align: center;
+    white-space: pre-line;
+  }
+</style>
+</head>
+<body>
+  <div class="box">
+    <h2>시험 응시 (학생용)</h2>
+    <label for="subjectSelect">과목 선택:</label>
+    <select id="subjectSelect">
+      <option value="">-- 과목 선택 --</option>
+    </select>
+    <div id="questionsContainer"></div>
+    <button id="submitBtn">제출</button>
+    <div id="result"></div>
+    <button id="logoutBtn" onclick="logout()">로그아웃</button>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.1.0/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.1.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyA_Tgj8J3mPwfs9EsWvuNROld3T4q5iwY8",
+      authDomain: "pullupmain.firebaseapp.com",
+      projectId: "pullupmain",
+      storageBucket: "pullupmain.appspot.com",
+      messagingSenderId: "955555666660",
+      appId: "1:955555666660:web:f109e5d2ac1e84b161aaf1",
+      measurementId: "G-JHWG8K16C"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const loggedUser = localStorage.getItem("loggedInUser");
+    const role = localStorage.getItem("role");
+
+    if (!loggedUser || role !== "student") {
+      alert("학생만 접근 가능합니다.");
+      window.location.href = "index.html";
+    }
+
+    const subjectSelect = document.getElementById("subjectSelect");
+    const questionsContainer = document.getElementById("questionsContainer");
+    const submitBtn = document.getElementById("submitBtn");
+    const resultDiv = document.getElementById("result");
+
+    let currentSubject = "";
+    let currentObjectiveAnswers = "";
+    let currentEssayAnswers = {};
+    let objectiveCount = 0;
+    let essayCount = 0;
+    let selectedObjectiveAnswers = [];
+    let writtenEssayAnswers = [];
+
+    async function loadExams() {
+      try {
+        const docRef = doc(db, "exams", loggedUser);
+        const docSnap = await getDoc(docRef);
+
+        if (!docSnap.exists()) {
+          alert("시험 정보가 없습니다. 관리자에게 문의하세요.");
+          window.location.href = "index.html";
+          return;
+        }
+
+        const data = docSnap.data();
+
+        for (const subject in data) {
+          const option = document.createElement("option");
+          option.value = subject;
+          option.textContent = subject;
+          subjectSelect.appendChild(option);
+        }
+
+        subjectSelect.addEventListener("change", () => {
+          const selected = subjectSelect.value;
+          currentSubject = selected;
+          resultDiv.textContent = "";
+          questionsContainer.innerHTML = "";
+
+          if (selected) {
+            const examData = data[selected];
+            currentObjectiveAnswers = examData["객관식_답안"] || "";
+            objectiveCount = parseInt(examData["객관식_문항수"] || 0);
+            currentEssayAnswers = examData["서술형_답안"] || {};
+            essayCount = parseInt(examData["서술형_문항수"] || 0);
+            renderQuestions();
+          }
+        });
+
+      } catch (error) {
+        alert("시험 정보를 불러오는 중 오류가 발생했습니다.");
+        console.error(error);
+      }
+    }
+
+    function renderQuestions() {
+      selectedObjectiveAnswers = Array(objectiveCount).fill(null);
+      writtenEssayAnswers = Array(essayCount).fill("");
+
+      questionsContainer.innerHTML = "";
+
+      // 객관식 문항
+      for (let i = 0; i < objectiveCount; i++) {
+        const div = document.createElement("div");
+        div.className = "question";
+        div.innerHTML = `<p>${i + 1}번 객관식 문제:</p>`;
+
+        const optionDiv = document.createElement("div");
+        optionDiv.className = "options";
+
+        for (let j = 1; j <= 5; j++) {
+          const btn = document.createElement("button");
+          btn.textContent = j;
+          btn.addEventListener("click", () => {
+            selectedObjectiveAnswers[i] = j.toString();
+            [...optionDiv.children].forEach(b => b.classList.remove("selected"));
+            btn.classList.add("selected");
+          });
+          optionDiv.appendChild(btn);
+        }
+
+        div.appendChild(optionDiv);
+        questionsContainer.appendChild(div);
+      }
+
+      // 서술형 문항
+      for (let i = 0; i < essayCount; i++) {
+        const div = document.createElement("div");
+        div.className = "question";
+        div.innerHTML = `
+          <p>${i + 1}번 서술형 문제:</p>
+          <textarea id="essayAnswer${i}" placeholder="답을 작성하세요."></textarea>
+        `;
+        questionsContainer.appendChild(div);
+      }
+    }
+
+    submitBtn.addEventListener("click", async () => {
+      if (selectedObjectiveAnswers.includes(null)) {
+        alert("모든 객관식 문항에 답을 선택해주세요.");
+        return;
+      }
+
+      for (let i = 0; i < essayCount; i++) {
+        const input = document.getElementById(`essayAnswer${i}`);
+        writtenEssayAnswers[i] = input.value.trim();
+      }
+
+      let objCorrect = 0;
+      let objWrongNumbers = [];
+      for (let i = 0; i < currentObjectiveAnswers.length; i++) {
+        if (selectedObjectiveAnswers[i] === currentObjectiveAnswers[i]) {
+          objCorrect++;
+        } else {
+          objWrongNumbers.push(i + 1);
+        }
+      }
+
+      let essayCorrect = 0;
+      let essayWrongNumbers = [];
+      for (let i = 0; i < essayCount; i++) {
+        if (writtenEssayAnswers[i] === (currentEssayAnswers[i] || "").toString()) {
+          essayCorrect++;
+        } else {
+          essayWrongNumbers.push(i + 1);
+        }
+      }
+
+      const resultText = `
+        총 객관식: ${objectiveCount}문제 중 ${objCorrect}개 정답 (틀린 번호: ${objWrongNumbers.join(", ") || "없음"})  
+        총 서술형: ${essayCount}문제 중 ${essayCorrect}개 정답 (틀린 번호: ${essayWrongNumbers.join(", ") || "없음"})
+      `;
+      resultDiv.innerText = resultText;
+
+      // 결과 저장
+      const resultDocRef = doc(db, "results", loggedUser);
+      const resultSnap = await getDoc(resultDocRef);
+      const prevData = resultSnap.exists() ? resultSnap.data() : {};
+
+      const update = {
+        ...prevData,
+        [currentSubject]: {
+          객관식_정답수: objCorrect,
+          객관식_틀린번호: objWrongNumbers,
+          서술형_정답수: essayCorrect,
+          서술형_틀린번호: essayWrongNumbers
+        }
+      };
+
+      await setDoc(resultDocRef, update);
+    });
+
+    window.logout = function () {
+      localStorage.removeItem("loggedInUser");
+      localStorage.removeItem("role");
+      window.location.href = "index.html";
+    };
+
+    loadExams();
+  </script>
+</body>
+</html>

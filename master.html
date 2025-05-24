@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>시험 설정 (관리자용)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(to right, #e0eafc, #cfdef3);
+      margin: 0;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 700px;
+      margin: auto;
+      background: #fff;
+      padding: 30px 40px;
+      border-radius: 15px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    }
+
+    h2 {
+      margin-bottom: 25px;
+      font-size: 24px;
+      color: #333;
+      text-align: center;
+    }
+
+    label {
+      display: block;
+      margin-top: 15px;
+      margin-bottom: 5px;
+      font-weight: 600;
+      color: #444;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 15px;
+      transition: 0.2s;
+    }
+
+    input:focus,
+    select:focus {
+      border-color: #3f51b5;
+      outline: none;
+      background-color: #f5faff;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      margin-top: 25px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+
+    #saveBtn {
+      background-color: #4caf50;
+      color: white;
+    }
+
+    #saveBtn:hover {
+      background-color: #43a047;
+    }
+
+    #logoutBtn {
+      background-color: #f44336;
+      color: white;
+      margin-top: 15px;
+    }
+
+    #logoutBtn:hover {
+      background-color: #d32f2f;
+    }
+
+    #essayLabel,
+    #essayInput,
+    #essayAnswerLabel,
+    #essayAnswerInput {
+      display: none;
+    }
+
+    @media screen and (max-width: 480px) {
+      .container {
+        padding: 20px;
+      }
+      h2 {
+        font-size: 20px;
+      }
+    }
+  </style>
+
+  <!-- Firebase 코드 그대로 유지 -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.1.0/firebase-app.js";
+    import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.1.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyA_Tgj8J3mPwfs9EsWvuNROld3T4q5iwY8",
+      authDomain: "pullupmain.firebaseapp.com",
+      projectId: "pullupmain",
+      storageBucket: "pullupmain.appspot.com",
+      messagingSenderId: "955555666660",
+      appId: "1:955555666660:web:f109e5d2ac1e84b161aaf1",
+      measurementId: "G-JHWG8K16C"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const loggedUser = localStorage.getItem("loggedInUser");
+    const role = localStorage.getItem("role");
+
+    if (!loggedUser || role !== "master") {
+      alert("관리자만 접근 가능합니다.");
+      window.location.href = "index.html";
+    }
+
+    const studentSelect = document.getElementById("studentSelect");
+    const subjectInput = document.getElementById("subjectInput");
+    const numQuestionsInput = document.getElementById("numQuestionsInput");
+    const answerInput = document.getElementById("answerInput");
+    const saveBtn = document.getElementById("saveBtn");
+    const essayLabel = document.getElementById("essayLabel");
+    const essayInput = document.getElementById("essayInput");
+    const essayAnswerLabel = document.getElementById("essayAnswerLabel");
+    const essayAnswerInput = document.getElementById("essayAnswerInput");
+
+    async function loadStudents() {
+      const usersSnapshot = await getDocs(collection(db, "users"));
+      usersSnapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        if (data.role === "student") {
+          const option = document.createElement("option");
+          option.value = docSnap.id;
+          option.textContent = docSnap.id;
+          studentSelect.appendChild(option);
+        }
+      });
+    }
+
+    loadStudents();
+
+    subjectInput.addEventListener("input", () => {
+      const subject = subjectInput.value.trim();
+      const showEssay = subject === "수학";
+      [essayLabel, essayInput, essayAnswerLabel, essayAnswerInput].forEach(el => {
+        el.style.display = showEssay ? "block" : "none";
+      });
+      if (!showEssay) {
+        essayInput.value = "";
+        essayAnswerInput.value = "";
+      }
+    });
+
+    saveBtn.addEventListener("click", async () => {
+      const studentId = studentSelect.value;
+      const subject = subjectInput.value.trim();
+      const numQuestions = Number(numQuestionsInput.value);
+      const answer = answerInput.value.trim();
+      const essayCount = subject === "수학" ? Number(essayInput.value || "0") : 0;
+      const essayAnswersRaw = subject === "수학" ? essayAnswerInput.value.trim() : "";
+
+      if (!studentId || !subject || !numQuestions || !answer) {
+        alert("학생, 과목명, 객관식 문항 수 및 답안을 모두 입력하세요.");
+        return;
+      }
+
+      if (answer.length !== numQuestions) {
+        alert(`객관식 답안 길이가 객관식 문항 수(${numQuestions})와 맞지 않습니다.`);
+        return;
+      }
+
+      let essayAnswers = [];
+      if (subject === "수학") {
+        if (essayCount < 0 || isNaN(essayCount)) {
+          alert("서술형 문항 수를 올바르게 입력하세요.");
+          return;
+        }
+        if (essayCount > 0) {
+          if (!essayAnswersRaw) {
+            alert("서술형 답안을 입력하세요.");
+            return;
+          }
+          essayAnswers = essayAnswersRaw.split(",").map(x => x.trim()).filter(x => x.length > 0);
+          if (essayAnswers.length !== essayCount) {
+            alert(`서술형 답안 개수(${essayAnswers.length})가 서술형 문항 수(${essayCount})와 일치하지 않습니다.`);
+            return;
+          }
+        }
+      }
+
+      const examDocRef = doc(db, "exams", studentId);
+      let examData = {};
+      try {
+        const docSnap = await getDoc(examDocRef);
+        if (docSnap.exists()) {
+          examData = docSnap.data();
+        }
+      } catch (e) {
+        console.error(e);
+      }
+
+      examData[subject] = {
+        객관식_답안: answer,
+        객관식_문항수: numQuestions,
+        서술형_문항수: essayCount,
+        서술형_답안: essayAnswers
+      };
+
+      await setDoc(examDocRef, examData);
+      await addDoc(collection(db, "results"), {
+        studentId,
+        subject,
+        result: "미응시",
+        timestamp: serverTimestamp()
+      });
+
+      alert("시험 설정이 저장되었습니다.");
+    });
+
+    function logout() {
+      localStorage.removeItem("loggedInUser");
+      localStorage.removeItem("role");
+      window.location.href = "index.html";
+    }
+  </script>
+</head>
+<body>
+  <div class="container">
+    <h2>📝 시험 설정 (관리자 전용)</h2>
+
+    <label for="studentSelect">학생 선택</label>
+    <select id="studentSelect">
+      <option value="">-- 학생 선택 --</option>
+    </select>
+
+    <label for="subjectInput">과목명 입력</label>
+    <input type="text" id="subjectInput" placeholder="예: 수학" />
+
+    <label for="numQuestionsInput">객관식 문항 수</label>
+    <input type="number" id="numQuestionsInput" placeholder="예: 5" min="1" max="20" />
+
+    <label id="essayLabel" for="essayInput">서술형 문항 수</label>
+    <input type="number" id="essayInput" placeholder="예: 2" min="0" max="20" />
+
+    <label id="essayAnswerLabel" for="essayAnswerInput">서술형 답안 (콤마로 구분)</label>
+    <input type="text" id="essayAnswerInput" placeholder="예: 23,158" />
+
+    <label for="answerInput">객관식 답안 입력</label>
+    <input type="text" id="answerInput" placeholder="예: 12345" maxlength="20" />
+
+    <button id="saveBtn">💾 시험 설정 저장</button>
+    <button id="logoutBtn" onclick="logout()">🚪 로그아웃</button>
+  </div>
+</body>
+</html>
