@@ -8,14 +8,12 @@
     * {
       box-sizing: border-box;
     }
-
     body {
       font-family: 'Poppins', sans-serif;
       background: linear-gradient(to right, #e0eafc, #cfdef3);
       margin: 0;
       padding: 40px 20px;
     }
-
     .container {
       max-width: 700px;
       margin: auto;
@@ -24,14 +22,12 @@
       border-radius: 15px;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
     }
-
     h2 {
       margin-bottom: 25px;
       font-size: 24px;
       color: #333;
       text-align: center;
     }
-
     label {
       display: block;
       margin-top: 15px;
@@ -39,7 +35,6 @@
       font-weight: 600;
       color: #444;
     }
-
     input[type="text"],
     input[type="number"],
     select {
@@ -50,18 +45,16 @@
       font-size: 15px;
       transition: 0.2s;
     }
-
     input:focus,
     select:focus {
       border-color: #3f51b5;
       outline: none;
       background-color: #f5faff;
     }
-
     button {
       width: 100%;
       padding: 14px;
-      margin-top: 25px;
+      margin-top: 15px;
       border: none;
       border-radius: 10px;
       font-size: 16px;
@@ -69,47 +62,69 @@
       cursor: pointer;
       transition: 0.3s;
     }
-
     #saveBtn {
       background-color: #4caf50;
       color: white;
     }
-
     #saveBtn:hover {
       background-color: #43a047;
     }
-
     #logoutBtn {
       background-color: #f44336;
       color: white;
-      margin-top: 15px;
     }
-
     #logoutBtn:hover {
       background-color: #d32f2f;
     }
-
+    #toggleExamsBtn {
+      background-color: #3f51b5;
+      color: white;
+    }
+    #toggleExamsBtn:hover {
+      background-color: #303f9f;
+    }
+    #examList {
+      display: none;
+      background-color: #f9f9f9;
+      padding: 15px;
+      margin-top: 10px;
+      border-radius: 10px;
+      border: 1px solid #ddd;
+    }
+    #examList ul {
+      list-style: none;
+      padding-left: 0;
+    }
+    #examList li {
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .deleteBtn {
+      background-color: #f44336;
+      color: white;
+      border: none;
+      padding: 4px 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background-color 0.3s;
+    }
+    .deleteBtn:hover {
+      background-color: #d32f2f;
+    }
     #essayLabel,
     #essayInput,
     #essayAnswerLabel,
     #essayAnswerInput {
       display: none;
     }
-
-    @media screen and (max-width: 480px) {
-      .container {
-        padding: 20px;
-      }
-      h2 {
-        font-size: 20px;
-      }
-    }
   </style>
 
-  <!-- Firebase 코드 그대로 유지 -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.1.0/firebase-app.js";
-    import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.1.0/firebase-firestore.js";
+    import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteField, updateDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.1.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyA_Tgj8J3mPwfs9EsWvuNROld3T4q5iwY8",
@@ -120,8 +135,22 @@
       appId: "1:955555666660:web:f109e5d2ac1e84b161aaf1",
       measurementId: "G-JHWG8K16C"
     };
+
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
+
+    const studentSelect = document.getElementById("studentSelect");
+    const subjectInput = document.getElementById("subjectInput");
+    const numQuestionsInput = document.getElementById("numQuestionsInput");
+    const answerInput = document.getElementById("answerInput");
+    const saveBtn = document.getElementById("saveBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const essayLabel = document.getElementById("essayLabel");
+    const essayInput = document.getElementById("essayInput");
+    const essayAnswerLabel = document.getElementById("essayAnswerLabel");
+    const essayAnswerInput = document.getElementById("essayAnswerInput");
+    const toggleExamsBtn = document.getElementById("toggleExamsBtn");
+    const examList = document.getElementById("examList");
 
     const loggedUser = localStorage.getItem("loggedInUser");
     const role = localStorage.getItem("role");
@@ -130,16 +159,6 @@
       alert("관리자만 접근 가능합니다.");
       window.location.href = "index.html";
     }
-
-    const studentSelect = document.getElementById("studentSelect");
-    const subjectInput = document.getElementById("subjectInput");
-    const numQuestionsInput = document.getElementById("numQuestionsInput");
-    const answerInput = document.getElementById("answerInput");
-    const saveBtn = document.getElementById("saveBtn");
-    const essayLabel = document.getElementById("essayLabel");
-    const essayInput = document.getElementById("essayInput");
-    const essayAnswerLabel = document.getElementById("essayAnswerLabel");
-    const essayAnswerInput = document.getElementById("essayAnswerInput");
 
     async function loadStudents() {
       const usersSnapshot = await getDocs(collection(db, "users"));
@@ -224,49 +243,113 @@
       };
 
       await setDoc(examDocRef, examData);
-      await addDoc(collection(db, "results"), {
-        studentId,
-        subject,
-        result: "미응시",
-        timestamp: serverTimestamp()
-      });
+      
+      
 
       alert("시험 설정이 저장되었습니다.");
     });
 
-    function logout() {
+    // 시험 목록에 삭제 버튼 추가 및 삭제 함수 구현
+    toggleExamsBtn.addEventListener("click", async () => {
+      const studentId = studentSelect.value;
+      if (!studentId) {
+        alert("학생을 먼저 선택하세요.");
+        return;
+      }
+
+      const examDocRef = doc(db, "exams", studentId);
+      const docSnap = await getDoc(examDocRef);
+
+      if (examList.style.display === "block") {
+        examList.style.display = "none";
+        toggleExamsBtn.textContent = "📋 시험 목록 보기";
+        examList.innerHTML = "";
+        return;
+      }
+
+      if (docSnap.exists()) {
+        const exams = docSnap.data();
+        examList.innerHTML = `<strong>${studentId}의 시험 목록:</strong><ul>` +
+          Object.entries(exams).map(([subject, data]) => {
+            return `<li>
+              <span><strong>${subject}</strong>: 객관식 ${data.객관식_문항수}문항, 서술형 ${data.서술형_문항수}문항</span>
+              <button class="deleteBtn" data-subject="${subject}">삭제</button>
+            </li>`;
+          }).join("") + `</ul>`;
+
+        // 삭제 버튼 이벤트 등록
+        examList.querySelectorAll(".deleteBtn").forEach(btn => {
+          btn.addEventListener("click", async (e) => {
+            const subjToDelete = e.target.getAttribute("data-subject");
+            if (confirm(`${subjToDelete} 시험지를 삭제하시습니까?`)) {
+                   try {
+        // exam 컬렉션 내 과목 필드 삭제
+        await updateDoc(examDocRef, {
+          [subjToDelete]: deleteField()
+        });
+
+        // results 컬렉션 내 studentId 문서의 subjToDelete 필드 삭제
+        const resultsDocRef = doc(db, "results", studentId);
+        await updateDoc(resultsDocRef, {
+          [subjToDelete]: deleteField()
+        });
+
+                alert(`${subjToDelete} 시험지가 삭제되었습니다.`);
+                // 시험 목록 새로고침
+                toggleExamsBtn.click();
+                toggleExamsBtn.click();
+              } catch (err) {
+                alert("삭제 중 오류가 발생했습니다.");
+                console.error(err);
+              }
+            }
+          });
+        });
+
+        examList.style.display = "block";
+        toggleExamsBtn.textContent = "❌ 시험 목록 숨기기";
+      } else {
+        alert("해당 학생의 시험지가 없습니다.");
+      }
+    });
+
+    logoutBtn.addEventListener("click", () => {
       localStorage.removeItem("loggedInUser");
       localStorage.removeItem("role");
       window.location.href = "index.html";
-    }
+    });
+
   </script>
 </head>
 <body>
   <div class="container">
-    <h2>📝 시험 설정 (관리자 전용)</h2>
+    <h2>시험 설정 (관리자용)</h2>
 
     <label for="studentSelect">학생 선택</label>
-    <select id="studentSelect">
-      <option value="">-- 학생 선택 --</option>
+    <select id="studentSelect" required>
+      <option value="">학생 선택</option>
     </select>
 
-    <label for="subjectInput">과목명 입력</label>
-    <input type="text" id="subjectInput" placeholder="예: 수학" />
+    <label for="subjectInput">과목명 (예: 국어, 영어, 수학 등)</label>
+    <input type="text" id="subjectInput" placeholder="과목명 입력" required />
 
     <label for="numQuestionsInput">객관식 문항 수</label>
-    <input type="number" id="numQuestionsInput" placeholder="예: 5" min="1" max="20" />
+    <input type="number" id="numQuestionsInput" min="1" max="100" placeholder="객관식 문항 수 입력" required />
 
-    <label id="essayLabel" for="essayInput">서술형 문항 수</label>
-    <input type="number" id="essayInput" placeholder="예: 2" min="0" max="20" />
+    <label for="answerInput">객관식 답안 (예: 12345)</label>
+    <input type="text" id="answerInput" placeholder="객관식 답안 입력" required />
 
-    <label id="essayAnswerLabel" for="essayAnswerInput">서술형 답안 (콤마로 구분)</label>
-    <input type="text" id="essayAnswerInput" placeholder="예: 23,158" />
+    <label id="essayLabel" for="essayInput">서술형 문항 수 (수학일 때만 표시)</label>
+    <input type="number" id="essayInput" min="0" max="50" placeholder="서술형 문항 수 입력" />
 
-    <label for="answerInput">객관식 답안 입력</label>
-    <input type="text" id="answerInput" placeholder="예: 12345" maxlength="20" />
+    <label id="essayAnswerLabel" for="essayAnswerInput">서술형 답안 (콤마로 구분, 예: 답1, 답2, 답3)</label>
+    <input type="text" id="essayAnswerInput" placeholder="서술형 답안 입력" />
 
-    <button id="saveBtn">💾 시험 설정 저장</button>
-    <button id="logoutBtn" onclick="logout()">🚪 로그아웃</button>
+    <button id="saveBtn">저장하기</button>
+    <button id="toggleExamsBtn">📋 시험 목록 보기</button>
+    <button id="logoutBtn">로그아웃</button>
+
+    <div id="examList"></div>
   </div>
 </body>
 </html>
